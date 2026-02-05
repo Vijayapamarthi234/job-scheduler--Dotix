@@ -1,3 +1,5 @@
+// Load environment variables
+require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
@@ -5,63 +7,120 @@ const axios = require("axios");
 const db = require("./db");
 
 const app = express();
+
+// Middlewares
 app.use(cors());
 app.use(express.json());
 
-const WEBHOOK_URL = "https://webhook.site/8979e4e6-0f16-4a54-bba7-d6a154551fa3";
+// Webhook URL from environment
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-// Create Job
+if (!WEBHOOK_URL) {
+  console.warn("⚠️ WEBHOOK_URL is not set in environment variables");
+}
+
+/* ========================
+   Create Job
+======================== */
 app.post("/jobs", (req, res) => {
   const { taskName, payload, priority } = req.body;
+
+  if (!taskName || !payload || !priority) {
+    return res.status(400).json({
+      error: "taskName, payload, and priority are required"
+    });
+  }
 
   const now = new Date().toISOString();
 
   db.run(
-    `INSERT INTO jobs (taskName, payload, priority, status, createdAt, updatedAt)
+    `INSERT INTO jobs 
+     (taskName, payload, priority, status, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [taskName, JSON.stringify(payload), priority, "pending", now, now],
+    [
+      taskName,
+      JSON.stringify(payload),
+      priority,
+      "pending",
+      now,
+      now
+    ],
     function (err) {
-      if (err) return res.status(500).json(err);
+      if (err) {
+        console.error("DB Insert Error:", err);
+        return res.status(500).json({ error: "Database error" });
+      }
+
       res.json({ id: this.lastID });
     }
   );
 });
 
-// List Jobs
+/* ========================
+   List Jobs
+======================== */
 app.get("/jobs", (req, res) => {
-  db.all("SELECT * FROM jobs", [], (err, rows) => {
-    if (err) return res.status(500).json(err);
+  db.all("SELECT * FROM jobs ORDER BY id DESC", [], (err, rows) => {
+    if (err) {
+      console.error("DB Fetch Error:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
     res.json(rows);
   });
 });
 
-// Job Detail
+/* ========================
+   Job Detail
+======================== */
 app.get("/jobs/:id", (req, res) => {
-  db.get("SELECT * FROM jobs WHERE id=?", [req.params.id], (err, row) => {
-    if (err) return res.status(500).json(err);
+  const id = req.params.id;
+
+  db.get("SELECT * FROM jobs WHERE id=?", [id], (err, row) => {
+    if (err) {
+      console.error("DB Detail Error:", err);
+      return res.status(500).json({ error: "Database error" });
+    }
+
+    if (!row) {
+      return res.status(404).json({ error: "Job not found" });
+    }
+
     res.json(row);
   });
 });
 
-// Run Job
+/* ========================
+   Run Job
+======================== */
 app.post("/run-job/:id", async (req, res) => {
   const id = req.params.id;
+
   const now = new Date().toISOString();
 
-  db.run("UPDATE jobs SET status='running', updatedAt=? WHERE id=?", [now, id]);
+  // Update to running
+  db.run(
+    "UPDATE jobs SET status='running', updatedAt=? WHERE id=?",
+    [now, id]
+  );
 
+  // Simulate background processing
   setTimeout(async () => {
     const completedAt = new Date().toISOString();
 
     db.get("SELECT * FROM jobs WHERE id=?", [id], async (err, job) => {
-      if (!job) return;
+      if (err || !job) {
+        console.error("Job Fetch Error:", err);
+        return;
+      }
 
+      // Update to completed
       db.run(
         "UPDATE jobs SET status='completed', updatedAt=? WHERE id=?",
         [completedAt, id]
       );
 
-      const payload = {
+      const webhookPayload = {
         jobId: job.id,
         taskName: job.taskName,
         priority: job.priority,
@@ -69,16 +128,41 @@ app.post("/run-job/:id", async (req, res) => {
         completedAt
       };
 
-      try {
-        const response = await axios.post(WEBHOOK_URL, payload);
-        console.log("Webhook sent:", response.status);
-      } catch (e) {
-        console.log("Webhook error:", e.message);
+      // Send webhook
+      if (WEBHOOK_URL) {
+        try {
+          const response = await axios.post(
+            WEBHOOK_URL,
+            webhookPayload
+          );
+
+          console.log("✅ Webhook sent:", response.status);
+        } catch (error) {
+          console.error("❌ Webhook error:", error.message);
+        }
+      } else {
+        console.warn("⚠️ Webhook skipped (URL not set)");
       }
+
     });
+
   }, 3000);
 
   res.json({ message: "Job started" });
 });
 
-app.listen(5000, () => console.log("Backend running on 5000"));
+/* ========================
+   Health Check
+======================== */
+app.get("/", (req, res) => {
+  res.send("Job Scheduler Backend is Running");
+});
+
+/* ========================
+   Start Server
+======================== */
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Backend running on port ${PORT}`);
+});

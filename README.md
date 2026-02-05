@@ -82,6 +82,18 @@ POST /run-job/:id
 
 
 
+**Live Demo**
+
+
+
+Frontend: https://your-vercel-url.vercel.app  
+
+Backend: https://your-render-url.onrender.com
+
+
+
+
+
 **AI Usage**
 
 
