@@ -1,4 +1,3 @@
-// Load environment variables
 require("dotenv").config();
 
 const express = require("express");
@@ -8,47 +7,45 @@ const db = require("./db");
 
 const app = express();
 
-// Middlewares
-app.use(cors());
+// ✅ CORS (Allow Vercel)
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST"],
+  allowedHeaders: ["Content-Type"]
+}));
+
 app.use(express.json());
 
-// Webhook URL from environment
+// ✅ Webhook from ENV
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
 
-if (!WEBHOOK_URL) {
-  console.warn("⚠️ WEBHOOK_URL is not set in environment variables");
-}
+// Root check
+app.get("/", (req, res) => {
+  res.send("Job Scheduler Backend is Running");
+});
 
-/* ========================
-   Create Job
-======================== */
+// =====================
+// CREATE JOB
+// =====================
 app.post("/jobs", (req, res) => {
+
   const { taskName, payload, priority } = req.body;
 
   if (!taskName || !payload || !priority) {
-    return res.status(400).json({
-      error: "taskName, payload, and priority are required"
-    });
+    return res.status(400).json({ error: "Missing fields" });
   }
 
   const now = new Date().toISOString();
 
   db.run(
-    `INSERT INTO jobs 
-     (taskName, payload, priority, status, createdAt, updatedAt)
+    `INSERT INTO jobs (taskName, payload, priority, status, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      taskName,
-      JSON.stringify(payload),
-      priority,
-      "pending",
-      now,
-      now
-    ],
+    [taskName, JSON.stringify(payload), priority, "pending", now, now],
     function (err) {
+
       if (err) {
-        console.error("DB Insert Error:", err);
-        return res.status(500).json({ error: "Database error" });
+        console.error(err);
+        return res.status(500).json({ error: "DB insert failed" });
       }
 
       res.json({ id: this.lastID });
@@ -56,113 +53,109 @@ app.post("/jobs", (req, res) => {
   );
 });
 
-/* ========================
-   List Jobs
-======================== */
+
+// =====================
+// LIST JOBS
+// =====================
 app.get("/jobs", (req, res) => {
+
   db.all("SELECT * FROM jobs ORDER BY id DESC", [], (err, rows) => {
+
     if (err) {
-      console.error("DB Fetch Error:", err);
-      return res.status(500).json({ error: "Database error" });
+      console.error(err);
+      return res.status(500).json({ error: "DB fetch failed" });
     }
 
     res.json(rows);
   });
 });
 
-/* ========================
-   Job Detail
-======================== */
+
+// =====================
+// JOB DETAILS
+// =====================
 app.get("/jobs/:id", (req, res) => {
-  const id = req.params.id;
 
-  db.get("SELECT * FROM jobs WHERE id=?", [id], (err, row) => {
-    if (err) {
-      console.error("DB Detail Error:", err);
-      return res.status(500).json({ error: "Database error" });
+  db.get(
+    "SELECT * FROM jobs WHERE id=?",
+    [req.params.id],
+    (err, row) => {
+
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ error: "DB error" });
+      }
+
+      res.json(row);
     }
-
-    if (!row) {
-      return res.status(404).json({ error: "Job not found" });
-    }
-
-    res.json(row);
-  });
+  );
 });
 
-/* ========================
-   Run Job
-======================== */
-app.post("/run-job/:id", async (req, res) => {
+
+// =====================
+// RUN JOB
+// =====================
+app.post("/run-job/:id", (req, res) => {
+
   const id = req.params.id;
 
   const now = new Date().toISOString();
 
-  // Update to running
+  // Set running
   db.run(
     "UPDATE jobs SET status='running', updatedAt=? WHERE id=?",
     [now, id]
   );
 
-  // Simulate background processing
+  // Simulate background work
   setTimeout(async () => {
+
     const completedAt = new Date().toISOString();
 
-    db.get("SELECT * FROM jobs WHERE id=?", [id], async (err, job) => {
-      if (err || !job) {
-        console.error("Job Fetch Error:", err);
-        return;
-      }
+    db.get(
+      "SELECT * FROM jobs WHERE id=?",
+      [id],
+      async (err, job) => {
 
-      // Update to completed
-      db.run(
-        "UPDATE jobs SET status='completed', updatedAt=? WHERE id=?",
-        [completedAt, id]
-      );
+        if (!job) return;
 
-      const webhookPayload = {
-        jobId: job.id,
-        taskName: job.taskName,
-        priority: job.priority,
-        payload: JSON.parse(job.payload),
-        completedAt
-      };
+        // Set completed
+        db.run(
+          "UPDATE jobs SET status='completed', updatedAt=? WHERE id=?",
+          [completedAt, id]
+        );
 
-      // Send webhook
-      if (WEBHOOK_URL) {
+        // Webhook payload
+        const payload = {
+          jobId: job.id,
+          taskName: job.taskName,
+          priority: job.priority,
+          payload: JSON.parse(job.payload),
+          completedAt
+        };
+
+        // Send webhook
         try {
-          const response = await axios.post(
-            WEBHOOK_URL,
-            webhookPayload
-          );
-
+          const response = await axios.post(WEBHOOK_URL, payload);
           console.log("✅ Webhook sent:", response.status);
-        } catch (error) {
-          console.error("❌ Webhook error:", error.message);
+        } catch (e) {
+          console.log("❌ Webhook error:", e.message);
         }
-      } else {
-        console.warn("⚠️ Webhook skipped (URL not set)");
-      }
 
-    });
+      }
+    );
 
   }, 3000);
 
   res.json({ message: "Job started" });
 });
 
-/* ========================
-   Health Check
-======================== */
-app.get("/", (req, res) => {
-  res.send("Job Scheduler Backend is Running");
-});
 
-/* ========================
-   Start Server
-======================== */
+// =====================
+// START SERVER
+// =====================
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
+  console.log("🚀 Backend running on port", PORT);
 });
