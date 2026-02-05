@@ -86,9 +86,9 @@ POST /run-job/:id
 
 
 
-Frontend: https://your-vercel-url.vercel.app  
+Frontend: job-scheduler-dotix-brown.vercel.app 
 
-Backend: https://your-render-url.onrender.com
+Backend:  https://job-scheduler-backend-3clo.onrender.com
 
 
 
