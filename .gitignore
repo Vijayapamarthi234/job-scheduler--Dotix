@@ -1,0 +1,8 @@
+# Ignore environment files
+backend/.env
+
+# Ignore database file
+backend/jobs.db
+
+# Ignore node modules
+node_modules/
