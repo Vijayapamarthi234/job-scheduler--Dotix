@@ -1,5 +1,8 @@
 const { useState, useEffect } = React;
 
+// ✅ CHANGE THIS TO YOUR REAL RENDER URL
+const API_BASE = "https://job-scheduler-backend.onrender.com";
+
 function App() {
 
   // States
@@ -15,8 +18,13 @@ function App() {
 
   // Load jobs
   const load = async () => {
-    const res = await axios.get("http://localhost:5000/jobs");
-    setJobs(res.data);
+    try {
+      const res = await axios.get(`${API_BASE}/jobs`);
+      setJobs(res.data);
+    } catch (err) {
+      console.error("Load error:", err);
+      alert("Backend not reachable");
+    }
   };
 
   useEffect(() => {
@@ -33,22 +41,35 @@ function App() {
       return;
     }
 
-    await axios.post("http://localhost:5000/jobs", {
-      taskName,
-      payload: JSON.parse(payload),
-      priority
-    });
+    try {
 
-    setTaskName("");
-    setPayload("{}");
+      await axios.post(`${API_BASE}/jobs`, {
+        taskName,
+        payload: JSON.parse(payload),
+        priority
+      });
 
-    load();
+      setTaskName("");
+      setPayload("{}");
+
+      load();
+
+    } catch (err) {
+      console.error("Create error:", err);
+      alert("Failed to create job");
+    }
   };
 
   // Run job
   const runJob = async (id) => {
-    await axios.post(`http://localhost:5000/run-job/${id}`);
-    load();
+
+    try {
+      await axios.post(`${API_BASE}/run-job/${id}`);
+      load();
+    } catch (err) {
+      console.error("Run error:", err);
+      alert("Failed to run job");
+    }
   };
 
   return (
