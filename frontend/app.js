@@ -1,7 +1,7 @@
 const { useState, useEffect } = React;
 
-// ✅ CHANGE THIS TO YOUR REAL RENDER URL
-const API_BASE = "https://job-scheduler-backend.onrender.com";
+// ✅ LIVE BACKEND URL (Render)
+const API_BASE = "https://job-scheduler-backend-3clo.onrender.com";
 
 function App() {
 
@@ -23,7 +23,7 @@ function App() {
       setJobs(res.data);
     } catch (err) {
       console.error("Load error:", err);
-      alert("Backend not reachable");
+      alert("❌ Cannot connect to backend");
     }
   };
 
@@ -34,10 +34,17 @@ function App() {
   // Create job
   const createJob = async () => {
 
+    // Validate JSON
     try {
       JSON.parse(payload);
     } catch {
-      alert("Invalid JSON in Payload");
+      alert("❌ Invalid JSON in Payload");
+      return;
+    }
+
+    // Validate task
+    if (!taskName.trim()) {
+      alert("❌ Task name is required");
       return;
     }
 
@@ -56,7 +63,7 @@ function App() {
 
     } catch (err) {
       console.error("Create error:", err);
-      alert("Failed to create job");
+      alert("❌ Failed to create job");
     }
   };
 
@@ -68,7 +75,7 @@ function App() {
       load();
     } catch (err) {
       console.error("Run error:", err);
-      alert("Failed to run job");
+      alert("❌ Failed to run job");
     }
   };
 
@@ -244,7 +251,7 @@ function App() {
   );
 }
 
-// Render
+// Render App
 ReactDOM
   .createRoot(document.getElementById("root"))
   .render(<App />);
